@@ -23,14 +23,31 @@ uniform Material material;
 uniform PointLight pointLights[MAX_LIGHTS];
 uniform int numLights;
 uniform vec3 viewPos;
-uniform bool thermalVision; 
+uniform bool thermalVision;
+
+// --- NUEVO: Interruptor para objetos que brillan (como la luna) ---
+uniform bool isEmissive;
+// -----------------------------------------------------------------
 
 void main()
 {
+    // 1. LEEMOS LA TEXTURA COMPLETA (RGBA)
+    vec4 texColor = texture(material.diffuse, TexCoords);
+
+    // 2. EL TRUCO MAGICO: "DISCARD"
+    // Si la transparencia (alpha) es menor al 10%, descartamos el p铆xel.
+    // Esto hace que se vean los agujeros.
+    if(texColor.a < 0.1)
+        discard;
+
+    // 3. Continuamos con la l贸gica normal usando el RGB de la textura
+    vec3 diffTex = texColor.rgb; 
     vec3 norm = normalize(Normal);
-    vec3 diffTex = texture(material.diffuse, TexCoords).rgb;
+
+    //vec3 norm = normalize(Normal);
+    //vec3 diffTex = texture(material.diffuse, TexCoords).rgb;
     
-    // 1. Iluminaci髇 normal
+    // 1. Iluminaci贸n normal (calculamos esto siempre, pero lo usaremos seg煤n el caso)
     vec3 lighting = 0.05 * diffTex; 
     for (int i = 0; i < numLights; i++)
     {
@@ -43,15 +60,17 @@ void main()
 
     if(thermalVision)
     {
-        // --- VISI覰 NOCTURNA MILITAR OSCURA ---
+        // --- VISI脫N NOCTURNA MILITAR OSCURA ---
+        // (Esto funcionar谩 bien con la luna porque usa 'diffTex' directamente.
+        //  La luna se ver谩 verde brillante, lo cual es realista para visi贸n nocturna).
+
         // Extraemos la luminancia
         float grayscale = dot(diffTex, vec3(0.2126, 0.7152, 0.0722));
         
-        // Multiplicador de brillo (ajusta este 1.4 si lo quieres m醩 oscuro a鷑)
+        // Multiplicador de brillo (ajusta este 1.4 si lo quieres m谩s oscuro a煤n)
         float brightness = grayscale * 1.4;
 
-        // Color verde militar oscuro (F髎foro P43)
-        // Menos azul, m醩 verde oliva/esmeralda profundo
+        // Color verde militar oscuro (F贸sforo P43)
         vec3 nightVisionColor = vec3(0.05, 0.45, 0.1); 
         
         // Aplicamos un contraste extra para que las sombras no se pierdan
@@ -63,13 +82,26 @@ void main()
     else
     {
         // --- MODO NORMAL ---
-        float distCam = length(viewPos - FragPos);
-        float fogFactor = exp(-distCam * 0.04);
-        fogFactor = clamp(fogFactor, 0.0, 1.0);
-        
-        vec3 fogColor = vec3(0.01, 0.01, 0.02); 
-        vec3 finalColor = mix(fogColor, lighting, fogFactor);
-        
-        FragColor = vec4(pow(finalColor, vec3(1.0/1.2)), 1.0);
+
+        // --- NUEVA L脫GICA AQU脥 ---
+        if (isEmissive) 
+        {
+            // Si es la luna (emisivo), ignoramos la niebla y las luces.
+            // Devolvemos el color puro de la textura para que brille.
+            FragColor = vec4(diffTex, 1.0); 
+        }
+        else 
+        {
+            // Si es la casa o el suelo, aplicamos niebla y luz normal
+            float distCam = length(viewPos - FragPos);
+            float fogFactor = exp(-distCam * 0.04);
+            fogFactor = clamp(fogFactor, 0.0, 1.0);
+            
+            vec3 fogColor = vec3(0.01, 0.01, 0.02); 
+            vec3 finalColor = mix(fogColor, lighting, fogFactor);
+            
+            FragColor = vec4(pow(finalColor, vec3(1.0/1.2)), 1.0);
+        }
+        // -------------------------
     }
 }
